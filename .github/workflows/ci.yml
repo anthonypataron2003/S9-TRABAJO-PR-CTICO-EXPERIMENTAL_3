@@ -1,4 +1,4 @@
-name: CI Django
+name: CI/CD Django
 
 on:
   push:
@@ -48,3 +48,48 @@ jobs:
 
       - name: Ejecutar tests
         run: python manage.py test
+
+  build:
+    name: build y despliegue simulado
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Construir imagen Docker
+        run: docker compose build
+
+      - name: Levantar contenedores (despliegue simulado)
+        run: docker compose up -d
+
+      - name: Verificar que la aplicacion responde
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/salud/; then
+              echo ""
+              echo "Aplicacion operativa"
+              exit 0
+            fi
+            echo "Esperando a la aplicacion ($i/30)..."
+            sleep 3
+          done
+          docker compose logs
+          exit 1
+
+      - name: Mostrar contenedores en ejecucion
+        run: docker compose ps
+
+      - name: Apagar contenedores
+        if: always()
+        run: docker compose down -v
+
+      - name: Guardar imagen Docker como artefacto
+        run: docker save django-cicd:latest | gzip > django-cicd-image.tar.gz
+
+      - name: Subir artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: imagen-docker-django
+          path: django-cicd-image.tar.gz
